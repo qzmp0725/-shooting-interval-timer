@@ -1,0 +1,12 @@
+{
+  "name": "10m Air Pistol 60분 인터벌 타이머",
+  "short_name": "Shooting Timer",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0b0b0c",
+  "theme_color": "#0b0b0c",
+  "icons": [
+    {"src":"icon-192.png","sizes":"192x192","type":"image/png"},
+    {"src":"icon-512.png","sizes":"512x512","type":"image/png"}
+  ]
+}

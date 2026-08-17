@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0b0c" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Shooting Timer" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-180.png" />
+<title>60분 사격 인터벌 타이머</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:#0b0b0c;color:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif}
+body{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:calc(20px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom))}
+main{width:min(560px,100%);text-align:center}
+.eyebrow{font-size:14px;color:#8e8e93;letter-spacing:.08em;text-transform:uppercase;margin-bottom:18px}
+.time{font-size:clamp(72px,22vw,120px);font-weight:750;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.055em;margin:12px 0 18px}
+.cue{font-size:30px;font-weight:750;min-height:42px;margin-bottom:8px}
+.status{font-size:15px;color:#8e8e93;min-height:22px;margin-bottom:28px}
+.progress{height:7px;background:#232326;border-radius:999px;overflow:hidden;margin-bottom:28px}
+.bar{height:100%;width:0%;background:#f5f5f7;transition:width .15s linear}
+.controls{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px}
+button{appearance:none;border:none;border-radius:16px;padding:17px 12px;font-size:17px;font-weight:700;background:#202024;color:#fff}
+button.primary{background:#f5f5f7;color:#0b0b0c}
+button:disabled{opacity:.4}
+.note{font-size:13px;color:#66666b;line-height:1.55;margin-top:24px}
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">10m Air Pistol · 60 min</div>
+  <div id="time" class="time">00:00</div>
+  <div id="cue" class="cue">Ready</div>
+  <div id="status" class="status">Start를 누르면 시작돼요</div>
+  <div class="progress"><div id="bar" class="bar"></div></div>
+  <div class="controls">
+    <button id="start" class="primary">Start</button>
+    <button id="pause">Pause</button>
+    <button id="reset">Reset</button>
+  </div>
+  <div class="note">음성 규칙: Attention → 5초 → Start → 60초 → Unload → 55초 → Attention. 60:00에는 Stop 후 종료.</div>
+</main>
+<audio id="track" preload="auto" playsinline src="audio/interval_60min.mp3"></audio>
+<script>
+const audio = document.getElementById('track');
+const timeEl = document.getElementById('time');
+const cueEl = document.getElementById('cue');
+const statusEl = document.getElementById('status');
+const barEl = document.getElementById('bar');
+const startBtn = document.getElementById('start');
+const pauseBtn = document.getElementById('pause');
+const resetBtn = document.getElementById('reset');
+const TOTAL = 3600;
+let raf = null;
+let wakeLock = null;
+
+function fmt(sec){
+  sec = Math.max(0, Math.min(TOTAL, Math.floor(sec)));
+  return String(Math.floor(sec/60)).padStart(2,'0') + ':' + String(sec%60).padStart(2,'0');
+}
+function cueAt(sec){
+  const s = Math.floor(sec);
+  if (s >= 3600) return 'Stop';
+  if (s >= 60 && s % 120 === 60) return 'Start';
+  if (s >= 120 && s % 120 === 0) return 'Unload';
+  if (s >= 175 && s % 120 === 55) return 'Attention';
+  return '';
+}
+function render(){
+  const t = Math.min(audio.currentTime || 0, TOTAL);
+  timeEl.textContent = fmt(t);
+  barEl.style.width = `${(t/TOTAL)*100}%`;
+  const cue = cueAt(t);
+  if (cue) cueEl.textContent = cue;
+  else if (!audio.paused && t < TOTAL) cueEl.textContent = '';
+  if (!audio.paused && t < TOTAL) raf = requestAnimationFrame(render);
+}
+async function requestWakeLock(){
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+}
+startBtn.addEventListener('click', async () => {
+  try {
+    await audio.play();
+    await requestWakeLock();
+    statusEl.textContent = '진행 중';
+    startBtn.textContent = 'Resume';
+    cancelAnimationFrame(raf); render();
+  } catch(e) {
+    statusEl.textContent = '오디오 재생 권한이 필요해요. Start를 다시 눌러주세요.';
+  }
+});
+pauseBtn.addEventListener('click', () => {
+  audio.pause();
+  statusEl.textContent = '일시정지';
+  cancelAnimationFrame(raf);
+});
+resetBtn.addEventListener('click', () => {
+  audio.pause(); audio.currentTime = 0;
+  timeEl.textContent = '00:00'; cueEl.textContent = 'Ready';
+  barEl.style.width = '0%'; statusEl.textContent = 'Start를 누르면 시작돼요';
+  startBtn.textContent = 'Start'; cancelAnimationFrame(raf);
+});
+audio.addEventListener('ended', () => {
+  timeEl.textContent = '60:00'; cueEl.textContent = 'Stop'; statusEl.textContent = '완료'; barEl.style.width='100%';
+  if (wakeLock) { try { wakeLock.release(); } catch(e) {} }
+});
+audio.addEventListener('pause', render);
+audio.addEventListener('timeupdate', render);
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && !audio.paused) await requestWakeLock();
+});
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+</script>
+</body>
+</html>
